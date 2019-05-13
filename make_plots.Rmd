@@ -1,0 +1,268 @@
+---
+title: "**R** illustrations for the paper 'Approximate Bayesian computation via the energy statistic'"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Load libraries
+
+```{r, echo=FALSE, message=FALSE}
+library(MixSim)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+library(xtable)
+library(reshape2)
+source("simulation_utils.R")
+```
+
+```{r}
+quantile_level <- 5e-4
+nb_iters <- 1e5
+label_vect <- c("ES", "KL", "WA", "MMD")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = FALSE, dev = c("png", "pdf"))
+```
+
+# GMM
+```{r}
+load("data/simus_gmm_1.RData")
+plot_list <- NULL
+density_plot <- function() {
+    for (i in 1:4) {
+        dist_label <- label_vect[i]
+        distance <- distance_df[, i]
+        accepted_vect <- ABC_output(distance, quantile_level)
+        dfdens <- data.frame(
+            mu0_x = simus$Mu[accepted_vect, 1, 1], 
+            mu0_y = simus$Mu[accepted_vect, 1, 2], 
+            mu1_x = simus$Mu[accepted_vect, 2, 1], 
+            mu1_y = simus$Mu[accepted_vect, 2, 2]
+        )
+        
+        plot1 <- ggplot(dfdens, aes(mu0_x, mu0_y)) + 
+            # geom_point(size = .3) + 
+            stat_density2d(size = .7, aes(color = ..level..)) + 
+            scale_color_gradient(low = "blue", high = "red") + 
+            scale_y_continuous(breaks = c(-1,0,0.7,1), limits = c(-1,1)) + 
+            scale_x_continuous(breaks = c(-1,0,0.7,1), limits = c(-1,1)) + 
+            # geom_density2d() + 
+            ggtitle(label = dist_label) + coord_fixed() + 
+            xlab(expression(mu[0])) + ylab("") + theme(legend.position = "none") + 
+            geom_vline(xintercept=0.7, linetype="dashed", size=1) + 
+            geom_hline(yintercept=0.7, linetype="dashed", size=1) + 
+            theme(plot.title=element_text(size=22), 
+                  axis.text=element_text(size=15), 
+                  axis.title=element_text(size=15, face="bold"))
+        
+        plot2 <- ggplot(dfdens, aes(mu1_x, mu1_y)) + 
+            # geom_point(size = .3) + 
+            stat_density2d(size = .7, aes(color = ..level..)) + 
+            scale_color_gradient(low = "blue", high = "red") + 
+            scale_y_continuous(breaks = c(-1,-0.7,0,1), limits = c(-1,1)) + 
+            scale_x_continuous(breaks = c(-1,-0.7,0,1), limits = c(-1,1)) + 
+            # geom_density2d() + 
+            ggtitle(label = dist_label) + coord_fixed() + 
+            xlab(expression(mu[1])) + ylab("") + theme(legend.position = "none") + 
+            geom_vline(xintercept=-0.7, linetype="dashed", size=1) + 
+            geom_hline(yintercept=-0.7, linetype="dashed", size=1) + 
+            theme(plot.title=element_text(size=22), 
+                  axis.text=element_text(size=15), 
+                  axis.title=element_text(size=15, face="bold"))
+        
+        plot_list <- c(plot_list, list(plot1,plot2))
+    }
+    plot_list
+}
+
+plots <- density_plot()
+plots
+
+for (j in 1:8) {
+ggsave(filename = paste0("figs/bgm_",j,".pdf"), 
+       plot = plots[[j]],
+       width = 5,
+       height = 4)
+}
+```
+
+# BBM
+```{r}
+load("data/simus_bbm_1.RData")
+
+True_Theta <- c(1,1,1,1,1)
+
+# shaping data for plots
+param_vect <- c(expression(italic(theta[1])),
+                expression(italic(theta[2])),
+                expression(italic(theta[3])),
+                expression(italic(theta[4])),
+                expression(italic(theta[5]))
+                )
+
+accepted_vect1 <- ABC_output(distance_df[, 1], quantile_level)
+accepted_vect2 <- ABC_output(distance_df[, 2], quantile_level)
+accepted_vect3 <- ABC_output(distance_df[, 3], quantile_level)
+accepted_vect4 <- ABC_output(distance_df[, 4], quantile_level)
+
+plot_list <- NULL
+density_plot <- function() {
+    for (j in 1:5) {
+        dfdens <- data.frame(
+            ES = simus$Theta[accepted_vect1, j], 
+            KL =  simus$Theta[accepted_vect2, j], 
+            WA = simus$Theta[accepted_vect3, j], 
+            MMD = simus$Theta[accepted_vect4, j]
+                      )
+            # method = rep(label_vect, each = nb_iters*quantile_level)
+        data<- melt(dfdens)
+        plot1 <- ggplot(data,aes(x=value, colour=variable, fill=variable)) + 
+            stat_density(geom="line", size = .7, position = "identity") + 
+            # geom_density(alpha=0.1, size = 1) + 
+            xlim(0, 5) + xlab(param_vect[j]) + ylab("") + 
+            labs(color = "") + 
+            geom_vline(xintercept=True_Theta[j], linetype="dashed", size=1, 
+                       colour = "black") + 
+            theme(plot.title=element_text(size=22), 
+                  axis.text=element_text(size=18), 
+                  axis.title=element_text(size=18, face="bold"), 
+                  legend.text=element_text(size=18))
+        # plot1 <- ggplot(data,aes(x=value, colour=variable, fill=variable)) +
+        #   # stat_density(geom="line", size = 1) +
+        # geom_density(alpha=0.1, size = .8) + # , adjust = .5
+        #   xlim(0, 5) +
+        #   xlab(param_vect[j]) +
+        #   geom_vline(xintercept=True_Theta[j],
+        #              linetype="dashed", size=1,
+        #              colour = "gray")
+        #   # xlab(expression(italic(param_vect[j])))
+        
+        plot_list <- c(plot_list, list(plot1))
+    }
+    plot_list
+}
+
+plots <- density_plot()
+plots
+
+for (j in 1:5) {
+    ggsave(filename = paste0("figs/bmm_",j,".pdf"), 
+           plot = plots[[j]], width = 5, height = 4)
+}
+```
+
+# MA2
+```{r}
+load("data/simus_ma2_1.RData")
+plot_list <- NULL
+density_plot <- function() {
+    for (i in 1:4) {
+        dist_label <- label_vect[i]
+        distance <- distance_df[, i]
+        accepted_vect <- ABC_output(distance, quantile_level)
+        dfdens <- data.frame(
+            theta_x = simus$Theta[accepted_vect, 1, 1], 
+            theta_y = simus$Theta[accepted_vect, 2, 1]
+        )
+        plot1 <- ggplot(dfdens, aes(theta_x, theta_y)) + 
+            # geom_point(size = .3) + 
+            stat_density2d(size = .7, aes(color = ..level..)) + 
+            scale_color_gradient(low = "blue", high = "red") + 
+            scale_y_continuous(breaks = c(-1,0,0.2,1), limits = c(-1,1)) + 
+            scale_x_continuous(breaks = c(-2,0,0.6,2), limits = c(-2,2)) + 
+            ggtitle(label = dist_label) + coord_fixed() + 
+            xlab(expression(theta[1])) + ylab(expression(theta[2])) + 
+            theme(legend.position = "none") + 
+            geom_vline(xintercept=0.6, linetype="dashed", size=1) + 
+            geom_hline(yintercept=0.2, linetype="dashed", size=1) + 
+            theme(plot.title=element_text(size=22), 
+                  axis.text=element_text(size=15), 
+                  axis.title=element_text(size=15, face="bold"))
+        
+        plot_list <- c(plot_list, list(plot1))
+    }
+    plot_list
+}
+
+plots <- density_plot()
+plots
+
+for (j in 1:4) {
+ggsave(filename = paste0("figs/ma2_",j,".pdf"), 
+       plot = plots[[j]],
+       width = 5,
+       height = 4)
+}
+```
+
+# GK
+```{r}
+load("data/simus_gk_1.RData")
+
+True_Theta <- c(3,1,2,0.5,-0.3)
+
+# shaping data for plots
+param_vect <- c(expression(italic(A)),
+                expression(italic(B)),
+                expression(italic(g)),
+                expression(italic(k)),
+                expression(rho)
+)
+
+accepted_vect1 <- ABC_output(distance_df[, 1], quantile_level)
+accepted_vect2 <- ABC_output(distance_df[, 2], quantile_level)
+accepted_vect3 <- ABC_output(distance_df[, 3], quantile_level)
+accepted_vect4 <- ABC_output(distance_df[, 4], quantile_level)
+
+plot_list <- NULL
+density_plot <- function() {
+    for (j in 1:5) {
+        dfdens <- data.frame(
+            ES = simus$Theta[accepted_vect1, j, 1], 
+            KL =  simus$Theta[accepted_vect2, j, 1], 
+            WA = simus$Theta[accepted_vect3, j, 1], 
+            MMD = simus$Theta[accepted_vect4, j, 1]
+                      )
+            # method = rep(label_vect, each = nb_iters*quantile_level)
+        data<- melt(dfdens)
+        if (j==5) {
+            plot1 <- ggplot(data,aes(x=value, colour=variable, fill=variable)) + 
+                stat_density(geom="line", size = .7, position = "identity") + 
+                # geom_density(alpha=0.1, size = 1) + 
+                xlim(-0.5, 0.5) + xlab(param_vect[j]) + ylab("") + labs(color = "") + 
+                geom_vline(xintercept=True_Theta[j], linetype="dashed", size=1, 
+                           colour = "black") + 
+                theme(plot.title=element_text(size=22), 
+                      axis.text=element_text(size=18), 
+                      axis.title=element_text(size=18, face="bold"), 
+                      legend.text=element_text(size=18))
+        } else {
+            plot1 <- ggplot(data,aes(x=value, colour=variable, fill=variable)) + 
+                stat_density(geom="line", size = .7, position = "identity") + 
+                # geom_density(alpha=0.1, size = 1) + 
+                xlim(0, 4) + xlab(param_vect[j]) + ylab("") + labs(color = "") + 
+                geom_vline(xintercept=True_Theta[j], linetype="dashed", size=1, 
+                           colour = "black") + 
+                theme(plot.title=element_text(size=22), 
+                      axis.text=element_text(size=18), 
+                      axis.title=element_text(size=18, face="bold"), 
+                      legend.text=element_text(size=18))
+        }
+        
+        plot_list <- c(plot_list, list(plot1))
+    }
+    plot_list
+}
+
+plots <- density_plot()
+plots
+
+for (j in 1:5) {
+    ggsave(filename = paste0("figs/gandk_",j,".pdf"), 
+           plot = plots[[j]], width = 5, height = 4)
+}
+```
+
